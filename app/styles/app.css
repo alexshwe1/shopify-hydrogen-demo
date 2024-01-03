@@ -427,6 +427,15 @@ aside li {
   padding: 0.25rem 0.5rem;
 }
 
+.recommended-products-info-container {
+  display: flex;
+  justify-content: space-between;
+}
+
+.selected-products-container {
+  display: flex;
+  justify-content: space-between;
+}
 /*
 * --------------------------------------------------
 * routes/blog._index.tsx

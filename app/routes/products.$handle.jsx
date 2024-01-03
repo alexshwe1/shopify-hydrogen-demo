@@ -1,4 +1,4 @@
-import {Suspense} from 'react';
+import {Suspense, useState} from 'react';
 import {defer, redirect} from '@shopify/remix-oxygen';
 import {Await, Link, useLoaderData} from '@remix-run/react';
 
@@ -24,6 +24,7 @@ export const meta = ({data}) => {
 export async function loader({params, request, context}) {
   const {handle} = params;
   const {storefront} = context;
+  const complementaryProducts = storefront.query(COMPLEMENTARY_PRODUCTS_QUERY);
 
   const selectedOptions = getSelectedProductOptions(request).filter(
     (option) =>
@@ -76,7 +77,7 @@ export async function loader({params, request, context}) {
     variables: {handle},
   });
 
-  return defer({product, variants});
+  return defer({product, variants, complementaryProducts});
 }
 
 /**
@@ -104,7 +105,7 @@ function redirectToFirstVariant({product, request}) {
 
 export default function Product() {
   /** @type {LoaderReturnData} */
-  const {product, variants} = useLoaderData();
+  const {product, variants, complementaryProducts} = useLoaderData();
   const {selectedVariant} = product;
   return (
     <div className="product">
@@ -113,6 +114,7 @@ export default function Product() {
         selectedVariant={selectedVariant}
         product={product}
         variants={variants}
+        complementaryProducts={complementaryProducts}
       />
     </div>
   );
@@ -145,7 +147,7 @@ function ProductImage({image}) {
  *   variants: Promise<ProductVariantsQuery>;
  * }}
  */
-function ProductMain({selectedVariant, product, variants}) {
+function ProductMain({selectedVariant, product, variants, complementaryProducts}) {
   const {title, descriptionHtml} = product;
   return (
     <div className="product-main">
@@ -182,7 +184,133 @@ function ProductMain({selectedVariant, product, variants}) {
       <br />
       <div dangerouslySetInnerHTML={{__html: descriptionHtml}} />
       <br />
+      
+      <OutfitMaker complementaryProducts={complementaryProducts}/>
+
     </div>
+  );
+}
+
+/**
+ * @param {{
+ *   complementaryProducts: Promise<ComplementaryProductsQuery>;
+ * }}
+ */
+function OutfitMaker({complementaryProducts}) {
+  const [checkedProducts, setCheckedProducts] = useState([]);
+
+  const handleCheckboxChange = (productId) => {
+    if (checkedProducts.includes(productId)) {
+      // Unchecked
+      setCheckedProducts(checkedProducts.filter((id) => id !== productId));
+    } else {
+      // Checked
+      setCheckedProducts([...checkedProducts, productId]);
+    }
+  };
+
+  return (
+    <div>
+      <strong>Create an outfit</strong>
+  
+      <br />
+      <br />
+
+      <Suspense fallback={<div>Loading...</div>}>
+        <Await resolve={complementaryProducts}>
+          {({products}) => (
+            <div>
+              <div className="recommended-products-grid">
+                {products.nodes.map((product) => (
+                  <div
+                    key={product.id}
+                    className="recommended-product"
+                  >
+                    <Image
+                      data={product.images.nodes[0]}
+                      aspectRatio="1/1"
+                      sizes="(min-width: 45em) 20vw, 50vw"
+                    />
+                    <div className="recommended-products-info-container">
+                      <div>
+                        <h4>{product.title}</h4>
+                        <small>
+                          <Money data={product.priceRange.minVariantPrice} />
+                        </small>
+                      </div>
+                      <div>
+                        <input
+                          type="checkbox"
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleCheckboxChange(product.id)
+                          }}
+                          checked={checkedProducts.includes(product.id)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <br />
+
+              {checkedProducts != 0 && 
+                <div className='selected-products-container'>
+                  <ul>
+                    {checkedProducts.map((productId) => {
+                      // Find the selected product based on productId
+                      const selectedProduct = products.nodes.find((product) => product.id === productId);
+
+                      if (selectedProduct) {
+                        return (
+                          <OutfitMakerVariantPicker key={selectedProduct.id} product={selectedProduct}/>
+                        );
+                      }
+
+                      return null; // Handle the case where the product is not found
+                    })}
+                  </ul>
+                  <div>
+                  <BulkAddItemsButton 
+                    selectedItemIds={checkedProducts}
+                  >
+                    Add {checkedProducts.length} items to cart
+                  </BulkAddItemsButton>
+                  </div>
+                </div>
+              }
+              <br />
+            </div>
+            
+          )}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+
+function OutfitMakerVariantPicker({product}) {
+  return(
+    <li key={product.id}>
+      <div>
+        <strong>{product.title}</strong> - <Money data={product.priceRange.minVariantPrice} />
+      </div>
+      <div>
+        Small Medium Large
+      </div>
+      <div>
+        Green Olive Ocean Purple
+      </div>
+    </li>
+  );
+}
+
+function BulkAddItemsButton({selectedItemIds, analytics, children, onClick}) {
+  return(
+    <button>
+      {children}
+    </button>
   );
 }
 
@@ -316,6 +444,37 @@ function AddToCartButton({analytics, children, disabled, lines, onClick}) {
   );
 }
 
+const COMPLEMENTARY_PRODUCTS_QUERY = `#graphql
+  fragment ComplementaryProduct on Product {
+    id
+    title
+    handle
+    priceRange {
+      minVariantPrice {
+        amount
+        currencyCode
+      }
+    }
+    images(first: 1) {
+      nodes {
+        id
+        url
+        altText
+        width
+        height
+      }
+    }
+  }
+  query ComplementaryProducts ($country: CountryCode, $language: LanguageCode)
+    @inContext(country: $country, language: $language) {
+    products(first: 4, sortKey: UPDATED_AT, reverse: true) {
+      nodes {
+        ...ComplementaryProduct
+      }
+    }
+  }
+`;
+
 const PRODUCT_VARIANT_FRAGMENT = `#graphql
   fragment ProductVariant on ProductVariant {
     availableForSale
@@ -419,6 +578,7 @@ const VARIANTS_QUERY = `#graphql
   }
 `;
 
+/** @typedef {import('storefrontapi.generated').ComplementaryProductsQuery} ComplementaryProductsQuery */
 /** @typedef {import('@shopify/remix-oxygen').LoaderFunctionArgs} LoaderFunctionArgs */
 /** @template T @typedef {import('@remix-run/react').MetaFunction<T>} MetaFunction */
 /** @typedef {import('@remix-run/react').FetcherWithComponents} FetcherWithComponents */
