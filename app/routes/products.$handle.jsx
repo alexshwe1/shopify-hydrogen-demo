@@ -264,7 +264,7 @@ function OutfitMaker({complementaryProducts}) {
 
                       if (selectedProduct) {
                         return (
-                          <OutfitMakerVariantPicker key={selectedProduct.id} product={selectedProduct}/>
+                          <OutfitMakerVariantPicker key={selectedProduct.id} product={selectedProduct} variants={selectedProduct.variants || []}/>
                         );
                       }
 
@@ -275,7 +275,7 @@ function OutfitMaker({complementaryProducts}) {
                   <BulkAddItemsButton 
                     selectedItemIds={checkedProducts}
                   >
-                    Add {checkedProducts.length} items to cart
+                    Add {checkedProducts.length} item{checkedProducts.length > 1 ? 's' : ''} to cart
                   </BulkAddItemsButton>
                   </div>
                 </div>
@@ -290,15 +290,19 @@ function OutfitMaker({complementaryProducts}) {
   );
 }
 
-function OutfitMakerVariantPicker({product}) {
+function OutfitMakerVariantPicker({key, product, variants}) {
   return(
-    <li key={product.id}>
+    <li key={key}>
       <div>
         <strong>{product.title}</strong> - <Money data={product.priceRange.minVariantPrice} />
       </div>
-      <div>
-        Small Medium Large
-      </div>
+      <VariantSelector
+        handle={product.handle}
+        options={product.options}
+        variants={variants}
+      >
+        {({option}) => <ProductOptions key={option.name} option={option} />}
+      </VariantSelector>
       <div>
         Green Olive Ocean Purple
       </div>
